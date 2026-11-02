@@ -11,14 +11,14 @@
     "ios": {
       "supportsTablet": true
     },
-   "android": {
-  "package": "com.md24ru.hanzipractic",
-  "adaptiveIcon": {
-    "foregroundImage": "./assets/images/logo.png",
-    "backgroundColor": "#ffffff"
-  },
-  "edgeToEdgeEnabled": true
-}
+    "android": {
+      "package": "com.md24ru.hanzipractic",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/logo.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true
+    },
     "web": {
       "bundler": "metro",
       "output": "static",
