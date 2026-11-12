@@ -1,11 +1,12 @@
 import { createContext, ReactNode, useCallback, useEffect, useState } from 'react';
-import { categories } from '@/services/characters';
+import { categories, characters } from '@/services/characters';
 import { chooseCharacter, chooseReviewCharacter, getMasteredCharacters, initialStudyState, loadProgress, recordAttempt, saveProgress, StudyMode, StudyState } from '@/services/progress';
 interface StudyContextValue {
   state: StudyState; ready: boolean; storageError: string; studyMode: StudyMode;
   review: { categoryId: string; currentId: string | null };
   selectMode: (mode: StudyMode) => void;
   selectCategory: (id: string) => void;
+  selectCharacter: (id: string) => void;
   submitAttempt: (correct: boolean, usedHint: boolean) => void;
 }
 export const StudyContext = createContext<StudyContextValue | undefined>(undefined);
@@ -39,10 +40,26 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const selectCategory = useCallback((id: string) => {
     if (!ready || !categories.some(item => item.id === id)) return;
     if (studyMode === 'review') {
-      setReview(previous => id === previous.categoryId ? previous : { categoryId: id, currentId: chooseReviewCharacter(id, state.progress)?.id ?? null });
+      setReview(previous => ({ categoryId: id, currentId: chooseReviewCharacter(id, state.progress, id === previous.categoryId ? previous.currentId : null)?.id ?? null }));
       return;
     }
-    setState(previous => id === previous.categoryId ? previous : { ...previous, categoryId: id, currentId: chooseCharacter(id, previous.progress)?.id ?? null });
+    setState(previous => ({ ...previous, categoryId: id, currentId: chooseCharacter(id, previous.progress, id === previous.categoryId ? previous.currentId : null)?.id ?? null }));
+  }, [ready, studyMode, state.progress]);
+  const selectCharacter = useCallback((id: string) => {
+    if (!ready) return;
+    const selected = characters.find(item => item.id === id);
+    if (!selected) return;
+    if (studyMode === 'review') {
+      if (getMasteredCharacters(selected.categoryId, state.progress).some(item => item.id === id)) {
+        setReview({ categoryId: selected.categoryId, currentId: id });
+      } else {
+        // A character not mastered yet cannot be selected in review mode; open it in learning mode.
+        setStudyMode('learn');
+        setState(previous => ({ ...previous, categoryId: selected.categoryId, currentId: selected.id }));
+      }
+      return;
+    }
+    setState(previous => ({ ...previous, categoryId: selected.categoryId, currentId: selected.id }));
   }, [ready, studyMode, state.progress]);
   const submitAttempt = useCallback((correct: boolean, usedHint: boolean) => {
     if (!ready) return;
@@ -53,5 +70,5 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     }
     setState(previous => recordAttempt(previous, correct, usedHint));
   }, [ready, studyMode, state.progress]);
-  return <StudyContext.Provider value={{ state, ready, storageError, studyMode, review, selectMode, selectCategory, submitAttempt }}>{children}</StudyContext.Provider>;
+  return <StudyContext.Provider value={{ state, ready, storageError, studyMode, review, selectMode, selectCategory, selectCharacter, submitAttempt }}>{children}</StudyContext.Provider>;
 }

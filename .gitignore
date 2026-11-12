@@ -37,3 +37,7 @@ yarn-error.*
 *.tsbuildinfo
 
 app-example
+
+# Local backup and diagnostic files
+*.backup
+expo-error.txt
