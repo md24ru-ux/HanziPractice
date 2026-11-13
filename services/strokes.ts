@@ -184,6 +184,60 @@ function getReferenceScale(strokes: Point[][]): number {
   );
 }
 
+// Align the complete user-written character to the reference using only
+// one uniform scale and one translation. No rotation or independent
+// per-stroke adjustment is allowed: relative proportions and stroke layout
+// therefore remain part of the assessment.
+function normalizeWriting(
+  actualStrokes: Point[][],
+  referenceStrokes: Point[][]
+): Point[][] {
+  const actualPoints = actualStrokes.flat();
+  const referencePoints = referenceStrokes.flat();
+
+  if (!actualPoints.length || actualPoints.length !== referencePoints.length) {
+    return actualStrokes;
+  }
+
+  const actualCenter = actualPoints.reduce(
+    (center, point) => ({ x: center.x + point.x / actualPoints.length, y: center.y + point.y / actualPoints.length }),
+    { x: 0, y: 0 }
+  );
+  const referenceCenter = referencePoints.reduce(
+    (center, point) => ({ x: center.x + point.x / referencePoints.length, y: center.y + point.y / referencePoints.length }),
+    { x: 0, y: 0 }
+  );
+
+  // Least-squares uniform scale. A single factor is used for both axes,
+  // so this cannot stretch a character horizontally or vertically.
+  let numerator = 0;
+  let denominator = 0;
+
+  actualPoints.forEach((point, index) => {
+    const ax = point.x - actualCenter.x;
+    const ay = point.y - actualCenter.y;
+    const rx = referencePoints[index].x - referenceCenter.x;
+    const ry = referencePoints[index].y - referenceCenter.y;
+    numerator += ax * rx + ay * ry;
+    denominator += ax * ax + ay * ay;
+  });
+
+  if (denominator < 0.001 || numerator <= 0) {
+    return actualStrokes;
+  }
+
+  // Allow moderate differences in overall writing size, but do not let
+  // an extremely tiny or oversized drawing be normalized without limit.
+  const scale = Math.min(1.6, Math.max(0.625, numerator / denominator));
+
+  return actualStrokes.map(stroke =>
+    stroke.map(point => ({
+      x: (point.x - actualCenter.x) * scale + referenceCenter.x,
+      y: (point.y - actualCenter.y) * scale + referenceCenter.y
+    }))
+  );
+}
+
 export function evaluateWriting(
   strokes: Point[][],
   shape: CharacterShape,
@@ -200,34 +254,36 @@ export function evaluateWriting(
   const referenceStrokes = shape.medians.map(medianPoints);
   const referenceScale = getReferenceScale(referenceStrokes);
 
+  // Resample first, then compensate only for the whole character's
+  // position and uniform size before measuring stroke-level accuracy.
+  const expected = referenceStrokes.map(stroke => resample(stroke));
+  const rawActual = strokes.map(stroke => resample(stroke));
+  const actual = normalizeWriting(rawActual, expected);
+
   let worst = 0;
   let worstIndex = 0;
   let sequenceError = '';
 
-  // Sequence detection thresholds are also proportional
-  // to the actual reference character size.
+  // Sequence detection thresholds are proportional to the reference
+  // character size and use the globally aligned user writing.
   const sequenceMargin = referenceScale * 0.015;
   const minimumSequenceError = referenceScale * 0.01;
 
-  strokes.forEach((stroke, index) => {
-    const reference = referenceStrokes[index];
+  actual.forEach((stroke, index) => {
+    const reference = expected[index];
 
-    const actual = resample(stroke);
-    const expected = resample(reference);
-
-    // Compare the entire stroke, point by point.
+    // Compare the entire stroke after global size/position normalization.
     const meanError =
-      actual.reduce(
-        (sum, p, i) => sum + distance(p, expected[i]),
+      stroke.reduce(
+        (sum, point, pointIndex) => sum + distance(point, reference[pointIndex]),
         0
-      ) / actual.length;
+      ) / stroke.length;
 
     // Check the direction of the stroke.
-    const ax = actual[31].x - actual[0].x;
-    const ay = actual[31].y - actual[0].y;
-
-    const ex = expected[31].x - expected[0].x;
-    const ey = expected[31].y - expected[0].y;
+    const ax = stroke[31].x - stroke[0].x;
+    const ay = stroke[31].y - stroke[0].y;
+    const ex = reference[31].x - reference[0].x;
+    const ey = reference[31].y - reference[0].y;
 
     if (
       ax * ex + ay * ey < 0 &&
@@ -238,50 +294,40 @@ export function evaluateWriting(
       sequenceError = `Черта ${index + 1}: проверьте направление.`;
     }
 
-    // Check whether the user accidentally wrote another
-    // reference stroke in the wrong position in the sequence.
+    // Check whether another reference stroke was written at this step.
     if (!sequenceError) {
-      referenceStrokes.forEach((median, otherIndex) => {
+      expected.forEach((alternative, otherIndex) => {
         if (otherIndex === index) return;
 
-        const alternative = resample(median);
-
         const otherError =
-          actual.reduce(
-            (sum, p, i) => sum + distance(p, alternative[i]),
+          stroke.reduce(
+            (sum, point, pointIndex) => sum + distance(point, alternative[pointIndex]),
             0
-          ) / actual.length;
+          ) / stroke.length;
 
         if (
           otherError + sequenceMargin < meanError &&
           meanError > minimumSequenceError
         ) {
-          sequenceError =
-            `Черта ${index + 1}: проверьте порядок черт.`;
+          sequenceError = `Черта ${index + 1}: проверьте порядок черт.`;
         }
       });
     }
 
-    // Endpoint accuracy.
+    // Endpoint and length accuracy are measured after the same global
+    // normalization, not against the user's original absolute size.
     const endpointError = Math.max(
-      distance(actual[0], expected[0]),
-      distance(actual[31], expected[31])
+      distance(stroke[0], reference[0]),
+      distance(stroke[31], reference[31])
     );
 
-    // Stroke length accuracy.
     const lengthError = Math.abs(
       length(stroke) - length(reference)
     );
 
-    // The strictest component determines the final score.
-    // The result is now normalized to the actual character size.
     const error = Math.min(
       100,
-      Math.max(
-        meanError,
-        endpointError,
-        lengthError * 0.5
-      ) / referenceScale * 100
+      Math.max(meanError, endpointError, lengthError * 0.5) / referenceScale * 100
     );
 
     if (error > worst) {
