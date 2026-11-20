@@ -45,10 +45,37 @@ export function saveProgress(state: StudyState): Promise<void> {
   queue = write;
   return write;
 }
-export function recordAttempt(state: StudyState, correct: boolean, usedHint: boolean): StudyState {
+export function recordAttempt(
+  state: StudyState,
+  correct: boolean,
+  usedHint: boolean,
+  advance = true
+): StudyState {
   if (!state.currentId || (state.progress[state.currentId]?.streak ?? 0) >= 10) return state;
+
   const id = state.currentId;
-  const previous = state.progress[id] ?? { streak: 0, attempts: 0, successes: 0, lastPracticed: 0 };
-  const progress = { ...state.progress, [id]: { streak: correct && !usedHint ? previous.streak + 1 : 0, attempts: previous.attempts + 1, successes: previous.successes + (correct && !usedHint ? 1 : 0), lastPracticed: Date.now() } };
-  return { ...state, progress, currentId: correct ? chooseCharacter(state.categoryId, progress, id)?.id ?? null : id };
+  const previous = state.progress[id] ?? {
+    streak: 0,
+    attempts: 0,
+    successes: 0,
+    lastPracticed: 0
+  };
+
+  const progress = {
+    ...state.progress,
+    [id]: {
+      streak: correct && !usedHint ? previous.streak + 1 : 0,
+      attempts: previous.attempts + 1,
+      successes: previous.successes + (correct && !usedHint ? 1 : 0),
+      lastPracticed: Date.now()
+    }
+  };
+
+  return {
+    ...state,
+    progress,
+    currentId: correct && advance
+      ? chooseCharacter(state.categoryId, progress, id)?.id ?? null
+      : id
+  };
 }

@@ -7,7 +7,8 @@ interface StudyContextValue {
   selectMode: (mode: StudyMode) => void;
   selectCategory: (id: string) => void;
   selectCharacter: (id: string) => void;
-  submitAttempt: (correct: boolean, usedHint: boolean) => void;
+  submitAttempt: (correct: boolean, usedHint: boolean, advance?: boolean) => void;
+advanceToNext: () => void;
 }
 export const StudyContext = createContext<StudyContextValue | undefined>(undefined);
 export function StudyProvider({ children }: { children: ReactNode }) {
@@ -61,14 +62,53 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     }
     setState(previous => ({ ...previous, categoryId: selected.categoryId, currentId: selected.id }));
   }, [ready, studyMode, state.progress]);
-  const submitAttempt = useCallback((correct: boolean, usedHint: boolean) => {
-    if (!ready) return;
-    if (studyMode === 'review') {
-      // Even errors and hints do not reset mastery or alter any learning statistics.
-      if (correct) setReview(previous => ({ ...previous, currentId: chooseReviewCharacter(previous.categoryId, state.progress, previous.currentId)?.id ?? null }));
-      return;
+  const submitAttempt = useCallback((
+  correct: boolean,
+  usedHint: boolean,
+  advance = true
+) => {
+  if (!ready) return;
+
+  if (studyMode === 'review') {
+    if (correct && advance) {
+      setReview(previous => ({
+        ...previous,
+        currentId: chooseReviewCharacter(
+          previous.categoryId,
+          state.progress,
+          previous.currentId
+        )?.id ?? null
+      }));
     }
-    setState(previous => recordAttempt(previous, correct, usedHint));
-  }, [ready, studyMode, state.progress]);
-  return <StudyContext.Provider value={{ state, ready, storageError, studyMode, review, selectMode, selectCategory, selectCharacter, submitAttempt }}>{children}</StudyContext.Provider>;
+    return;
+  }
+
+  setState(previous => recordAttempt(previous, correct, usedHint, advance));
+}, [ready, studyMode, state.progress]);
+
+const advanceToNext = useCallback(() => {
+  if (!ready) return;
+
+  if (studyMode === 'review') {
+    setReview(previous => ({
+      ...previous,
+      currentId: chooseReviewCharacter(
+        previous.categoryId,
+        state.progress,
+        previous.currentId
+      )?.id ?? null
+    }));
+    return;
+  }
+
+  setState(previous => ({
+    ...previous,
+    currentId: chooseCharacter(
+      previous.categoryId,
+      previous.progress,
+      previous.currentId
+    )?.id ?? null
+  }));
+}, [ready, studyMode, state.progress]);
+  return <StudyContext.Provider value={{ state, ready, storageError, studyMode, review, selectMode, selectCategory, selectCharacter, submitAttempt, advanceToNext }}>{children}</StudyContext.Provider>;
 }
