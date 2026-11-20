@@ -9,7 +9,7 @@ import { useStudy } from './useStudy';
 type ToleranceMode = 'L' | 'M' | 'H';
 const settingsKey = 'hanzipractice:settings:v1';
 const attemptsKey = 'hanzipractice:attempts:v1';
-const toleranceValues: Record<ToleranceMode, number> = { L: 20, M: 15, H: 10 };
+const toleranceValues: Record<ToleranceMode, number> = { L: 12, M: 9, H: 6 };
 
 export function usePractice() {
   const {
