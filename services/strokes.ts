@@ -349,7 +349,7 @@ interface PairResult {
 export function evaluateWriting(
   strokes: Point[][],
   shape: CharacterShape,
-  tolerance = 10
+  tolerance = 12
 ): Verdict {
   if (strokes.length !== shape.medians.length) {
     return {
